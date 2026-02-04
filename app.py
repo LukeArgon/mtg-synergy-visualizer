@@ -9,6 +9,7 @@ import time
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="MTG Clean Analyzer", layout="wide", page_icon="🧿")
 
+# CSS per nascondere elementi inutili e dare il look Dark Mode
 st.markdown("""
 <style>
     .reportview-container { background: #121212; color: #e0e0e0; }
@@ -16,7 +17,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("MTG SINERGY")
+st.title("🧿 MTG Deck Analyzer: Clean View")
 
 # --- LOGICA COLORI MTG ---
 def get_mtg_color(colors, type_line):
@@ -45,8 +46,10 @@ def get_card_data_clean(card_name):
             
             # Recupero testo per calcoli interni (NON mostrato a video)
             if 'card_faces' in data:
-                oracle_text = f"{data['card_faces'][0].get('oracle_text', '')}\n{data['card_faces'][1].get('oracle_text', '')}"
-                type_line = f"{data['card_faces'][0].get('type_line', '')}"
+                face0 = data['card_faces'][0]
+                face1 = data['card_faces'][1]
+                oracle_text = f"{face0.get('oracle_text', '')}\n{face1.get('oracle_text', '')}"
+                type_line = f"{face0.get('type_line', '')}"
             else:
                 oracle_text = data.get('oracle_text', '')
                 type_line = data.get('type_line', '')
@@ -92,5 +95,15 @@ def calculate_synergy_weight(card_a, card_b):
 with st.sidebar:
     st.header("🛠️ Configurazione Mazzo")
     
-    # Input Lista
-    decklist_input =
+    # Input Lista (Corretto per evitare errori di sintassi)
+    decklist_input = st.text_area(
+        "Lista Carte", 
+        height=200, 
+        value="Sol Ring\nArcane Signet\nCommand Tower\nBirds of Paradise\nWrath of God\nLightning Bolt"
+    )
+    
+    st.divider()
+    st.subheader("🔍 Filtri Visualizzazione")
+    
+    # FILTRO 1: Range Costo di Mana
+    min_cmc, max_cmc = st
