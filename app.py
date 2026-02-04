@@ -7,9 +7,8 @@ import tempfile
 import time
 
 # --- CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="MTG Synergy Pro", layout="wide", page_icon="🔮")
+st.set_page_config(page_title="MTG Synergy Weighted", layout="wide", page_icon="⚖️")
 
-# CSS Custom per nascondere menu default e migliorare il look
 st.markdown("""
 <style>
     .reportview-container { background: #121212; color: #e0e0e0; }
@@ -17,27 +16,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🔮 MTG Deck Visualizer 2.0 (Pro Edition)")
+st.title("⚖️ MTG Synergy: Weighted Edition")
+st.caption("Lo spessore della linea indica la potenza della sinergia tra le carte.")
 
-# --- LOGICA COLORI MTG (WUBRG) ---
+# --- LOGICA COLORI MTG ---
 def get_mtg_color(colors, type_line):
-    """Restituisce il codice HEX basato sull'identità di colore."""
-    if "Land" in type_line: return "#8B4513" # Marrone Terra
-    if not colors: return "#A9A9A9" # Grigio Artefatto/Eldrazi
-    if len(colors) > 1: return "#DAA520" # Oro (Multicolor)
-    
-    mapping = {
-        'W': '#F8E7B9', # Bianco Panna
-        'U': '#0E68AB', # Blu Magic
-        'B': '#150B00', # Nero (quasi)
-        'R': '#D3202A', # Rosso Fuoco
-        'G': '#00733E'  # Verde Foresta
-    }
+    if "Land" in type_line: return "#8B4513" 
+    if not colors: return "#A9A9A9" 
+    if len(colors) > 1: return "#DAA520" 
+    mapping = {'W': '#F8E7B9', 'U': '#0E68AB', 'B': '#150B00', 'R': '#D3202A', 'G': '#00733E'}
     return mapping.get(colors[0], "#ccc")
 
-# --- FETCH DATI SCRYFALL ---
+# --- FETCH DATI ---
 @st.cache_data
-def get_card_data_pro(card_name):
+def get_card_data_weighted(card_name):
     url = f"https://api.scryfall.com/cards/named?exact={card_name}"
     try:
         time.sleep(0.05) 
@@ -45,138 +37,146 @@ def get_card_data_pro(card_name):
         if response.status_code == 200:
             data = response.json()
             
-            # Gestione carte doppia faccia
             if 'card_faces' in data:
-                oracle_text = data['card_faces'][0].get('oracle_text', '') + " " + data['card_faces'][1].get('oracle_text', '')
-                image = data['card_faces'][0].get('image_uris', {}).get('normal', '')
+                oracle_text = f"{data['card_faces'][0].get('oracle_text', '')}\n{data['card_faces'][1].get('oracle_text', '')}"
+                type_line = f"{data['card_faces'][0].get('type_line', '')} {data['card_faces'][1].get('type_line', '')}"
             else:
                 oracle_text = data.get('oracle_text', '')
-                image = data.get('image_uris', {}).get('normal', '')
+                type_line = data.get('type_line', '')
 
             return {
                 'name': data.get('name'),
-                'type': data.get('type_line'),
+                'type': type_line,
                 'cmc': data.get('cmc', 0),
                 'colors': data.get('colors', []),
-                'oracle_text': oracle_text,
-                'image_url': image,
+                'oracle_text': oracle_text.lower(), # Tutto minuscolo per confronto facile
                 'price': data.get('prices', {}).get('eur', 'N/A')
             }
         return None
     except:
         return None
 
-# --- SIDEBAR: INPUT & FILTRI ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("🛠️ Deck Editor")
-    decklist_input = st.text_area("Lista Carte (una per riga)", height=250, 
-                                  value="Sol Ring\nArcane Signet\nCommand Tower\nBirds of Paradise\nWrath of God\nLightning Bolt\nBrainstorm\nCounterspell\nShivan Dragon\nLlanowar Elves")
+    decklist_input = st.text_area("Lista Carte", height=300, 
+                                  value="Krenko, Mob Boss\nGoblin Chieftain\nGoblin Warchief\nSkirk Prospector\nImpact Tremors\nMountain\nSol Ring")
     
-    st.divider()
-    st.subheader("🔍 Filtri Visuali")
-    min_cmc, max_cmc = st.slider("Filtra per Mana Value (CMC)", 0, 15, (0, 15))
-    show_lands = st.checkbox("Mostra Terre", value=True)
+    st.info("💡 Suggerimento: Metti il Comandante come prima carta della lista.")
+    analyze_btn = st.button("Calcola Pesi Sinergici", type="primary")
 
-    analyze_btn = st.button("🚀 Analizza Mazzo", type="primary")
+# --- ENGINE DI CALCOLO SINERGIA ---
+def calculate_synergy_weight(card_a, card_b):
+    score = 0
+    reasons = []
+
+    # 1. Lista Keyword Tribali e di Tipo
+    tribal_keywords = ['goblin', 'elf', 'human', 'zombie', 'dragon', 'angel', 'sliver', 'wizard', 'merfolk', 'artifact', 'enchantment']
+    
+    # 2. Lista Keyword Meccaniche (Più pesanti)
+    mech_keywords = ['destroy', 'exile', 'draw', 'counter', 'sacrifice', 'graveyard', 'token', 'haste', 'trample', 'flying', 'life', 'damage']
+
+    text_a = card_a['oracle_text']
+    type_b = card_b['type'].lower()
+    text_b = card_b['oracle_text']
+
+    # Regola A: Carta A menziona il TIPO di Carta B (Es. Lord che buffa)
+    for k in tribal_keywords:
+        if k in text_a and k in type_b:
+            score += 2 # Sinergia forte
+            reasons.append(f"Tribal: {k}")
+
+    # Regola B: Condivisione Meccanica (Entrambe parlano di "Sacrifice")
+    for k in mech_keywords:
+        if k in text_a and k in text_b:
+            score += 1 # Sinergia meccanica
+            reasons.append(f"Mech: {k}")
+
+    # Regola C: Identità di Colore esatta (Bonus piccolo)
+    if card_a['colors'] == card_b['colors'] and len(card_a['colors']) > 0:
+        score += 0.5
+
+    return score, list(set(reasons))
 
 # --- MAIN APP ---
 if analyze_btn and decklist_input:
     raw_names = [line.strip() for line in decklist_input.split('\n') if line.strip()]
     
-    # 1. Loading Dati
-    with st.spinner(f"Consultando l'Oracolo per {len(raw_names)} carte..."):
-        cards_data = []
-        for name in raw_names:
-            c = get_card_data_pro(name)
-            if c: cards_data.append(c)
+    with st.spinner("Calcolo delle interazioni complesse..."):
+        cards_data = [d for name in raw_names if (d := get_card_data_weighted(name))]
     
-    # Creazione DataFrame per gestire i filtri
     df = pd.DataFrame(cards_data)
     
-    # 2. Applicazione Filtri
     if not df.empty:
-        # Filtro CMC
-        df = df[(df['cmc'] >= min_cmc) & (df['cmc'] <= max_cmc)]
-        # Filtro Terre
-        if not show_lands:
-            df = df[~df['type'].str.contains("Land")]
+        # KPI veloci
+        st.metric("Carte Analizzate", len(df))
 
-        # Calcolo Statistiche
-        total_price = pd.to_numeric(df['price'], errors='coerce').sum()
-        avg_cmc = df['cmc'].mean()
-        
-        # Display KPI in alto
-        kpi1, kpi2, kpi3 = st.columns(3)
-        kpi1.metric("Carte Analizzate", len(df))
-        kpi2.metric("Prezzo Stimato (CardMarket)", f"€{total_price:.2f}")
-        kpi3.metric("Avg. Mana Value", f"{avg_cmc:.2f}")
-
-        # 3. Costruzione Grafo
         G = nx.DiGraph()
         
+        # Aggiunta Nodi
         for index, row in df.iterrows():
-            # Dimensione basata sul CMC (Minimo 10, +5 per ogni mana)
-            node_size = 15 + (row['cmc'] * 5)
-            
-            # Colore
-            node_color = get_mtg_color(row['colors'], row['type'])
-            
-            # HTML per il Tooltip (Immagine al passaggio del mouse)
-            tooltip_html = f"""
-            <div style='text-align:center;'>
-                <img src='{row['image_url']}' width='200'><br>
-                <b>{row['name']}</b><br>
-                CMC: {row['cmc']} | €{row['price']}
-            </div>
-            """
+            node_size = 15 + (row['cmc'] * 4)
+            # Evidenzia il comandante (assumiamo sia il primo della lista)
+            if row['name'] == raw_names[0]:
+                border_width = 5 
+                border_color = "#FFD700" # Oro
+                label_text = f"👑 {row['name']}"
+            else:
+                border_width = 1
+                border_color = "black"
+                label_text = row['name']
+
+            tooltip = f"<b>{row['name']}</b><br>{row['type']}<br>€{row['price']}<hr>{row['oracle_text'][:100]}..."
             
             G.add_node(row['name'], 
                        size=node_size, 
-                       color=node_color,
-                       title=tooltip_html, # Questo fa la magia dell'immagine
-                       label=row['name'],
-                       font={'color': 'white', 'strokeWidth': 2, 'strokeColor': 'black'})
+                       color=get_mtg_color(row['colors'], row['type']),
+                       title=tooltip,
+                       label=label_text,
+                       borderWidth=border_width,
+                       borderWidthSelected=border_width+2,
+                       shapeProperties={'useBorderWithImage':True},
+                       font={'color': 'white'})
 
-        # 4. Calcolo Sinergie (Versione Semplificata Keywords)
-        # Keywords base da cercare
-        keywords = ['artifact', 'enchantment', 'human', 'elf', 'goblin', 'zombie', 'dragon', 
-                    'graveyard', 'sacrifice', 'counter', 'destroy', 'draw', 'exile']
-        
+        # Calcolo Archi Pesati
         nodes_list = list(G.nodes())
+        connections_count = 0
+        
         for i in range(len(nodes_list)):
             for j in range(len(nodes_list)):
                 if i == j: continue
                 
-                name_a = nodes_list[i]
-                name_b = nodes_list[j]
-                
-                # Recupera i dati dal DF originale
+                name_a, name_b = nodes_list[i], nodes_list[j]
                 card_a = df[df['name'] == name_a].iloc[0]
                 card_b = df[df['name'] == name_b].iloc[0]
                 
-                # Logica Sinergia: A menziona una keyword che B possiede nel tipo
-                text_a = card_a['oracle_text'].lower()
-                type_b = card_b['type'].lower()
+                weight, reasons = calculate_synergy_weight(card_a, card_b)
                 
-                for k in keywords:
-                    if k in text_a and k in type_b:
-                        G.add_edge(name_a, name_b, color="#555555", width=1)
+                # Disegniamo la linea solo se il peso è rilevante (> 1)
+                # Oppure > 0.5 se vogliamo vedere tutto
+                if weight >= 1:
+                    connections_count += 1
+                    # Scala larghezza: da 1px a 8px max
+                    edge_width = min(weight * 1.5, 8) 
+                    
+                    G.add_edge(name_a, name_b, 
+                               width=edge_width, 
+                               title=f"Score: {weight} ({', '.join(reasons)})",
+                               color="#555555")
 
-        # 5. Rendering
-        net = Network(height="700px", width="100%", bgcolor="#222222", font_color="white")
+        # Visualizzazione
+        net = Network(height="750px", width="100%", bgcolor="#222222", font_color="white")
         net.from_nx(G)
         
-        # Fisica migliorata per evitare sovrapposizioni (BarnsHut)
-        net.barnes_hut(gravity=-2000, central_gravity=0.3, spring_length=150)
+        # Physics config: Aumentiamo la repulsione per vedere meglio le linee spesse
+        net.barnes_hut(gravity=-3000, central_gravity=0.1, spring_length=200, spring_strength=0.05)
         
         try:
-            path = tempfile.gettempdir() + "/mtg_graph_pro.html"
+            path = tempfile.gettempdir() + "/mtg_weighted.html"
             net.save_graph(path)
             with open(path, 'r', encoding='utf-8') as f:
                 source_code = f.read()
-            st.components.v1.html(source_code, height=720)
+            st.components.v1.html(source_code, height=770)
+            st.success(f"Trovate {connections_count} sinergie significative.")
         except Exception as e:
-            st.error(f"Errore visualizzazione: {e}")
-
-    else:
-        st.warning("Nessuna carta trovata con i filtri attuali.")
+            st.error(f"Errore: {e}")
