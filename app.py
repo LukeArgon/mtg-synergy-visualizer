@@ -17,7 +17,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🧿 MTG Deck Analyzer: Clean View")
+st.title("MTG Sinergy")
 
 # --- LOGICA COLORI MTG ---
 def get_mtg_color(colors, type_line):
@@ -106,4 +106,93 @@ with st.sidebar:
     st.subheader("🔍 Filtri Visualizzazione")
     
     # FILTRO 1: Range Costo di Mana
-    min_cmc, max_cmc = st
+    min_cmc, max_cmc = st.slider("Costo di Mana (CMC)", 0, 15, (0, 15))
+    
+    # FILTRO 2: Mostra/Nascondi Terre
+    show_lands = st.checkbox("Mostra Terre", value=True)
+    
+    analyze_btn = st.button("Genera Grafo", type="primary")
+
+# --- MAIN ---
+if analyze_btn and decklist_input:
+    raw_names = [line.strip() for line in decklist_input.split('\n') if line.strip()]
+    
+    with st.spinner(f"Analisi di {len(raw_names)} carte..."):
+        all_cards_data = [d for name in raw_names if (d := get_card_data_clean(name))]
+    
+    # Creazione DataFrame
+    df = pd.DataFrame(all_cards_data)
+    
+    if not df.empty:
+        # --- APPLICAZIONE FILTRI ---
+        # 1. Filtro CMC
+        df_filtered = df[(df['cmc'] >= min_cmc) & (df['cmc'] <= max_cmc)]
+        
+        # 2. Filtro Terre
+        if not show_lands:
+            df_filtered = df_filtered[~df_filtered['type'].str.contains("Land")]
+        
+        # Statistiche post-filtro
+        st.caption(f"Visualizzando {len(df_filtered)} carte su {len(df)} totali.")
+
+        # --- COSTRUZIONE GRAFO ---
+        G = nx.DiGraph()
+        
+        for index, row in df_filtered.iterrows():
+            # Logica Dimensione (CMC)
+            node_size = 15 + (row['cmc'] * 5)
+            
+            # Aggiunta nodo SENZA 'title' (No Tooltip)
+            G.add_node(row['name'], 
+                       size=node_size, 
+                       color=get_mtg_color(row['colors'], row['type']),
+                       label=row['name'],  # Il nome appare sotto il pallino
+                       font={'color': 'white', 'size': 14, 'strokeWidth': 2, 'strokeColor': 'black'})
+
+        # Logica Archi (Sinergie)
+        nodes_list = list(G.nodes())
+        connections = 0
+        
+        for i in range(len(nodes_list)):
+            for j in range(len(nodes_list)):
+                if i == j: continue
+                
+                name_a, name_b = nodes_list[i], nodes_list[j]
+                
+                # Recuperiamo i dati dal DF filtrato
+                card_a = df_filtered[df_filtered['name'] == name_a].iloc[0]
+                card_b = df_filtered[df_filtered['name'] == name_b].iloc[0]
+                
+                weight = calculate_synergy_weight(card_a, card_b)
+                
+                # Disegna solo se c'è sinergia rilevante (>= 1)
+                if weight >= 1:
+                    connections += 1
+                    # Spessore linea proporzionale
+                    edge_width = min(weight * 1.5, 7) 
+                    G.add_edge(name_a, name_b, width=edge_width, color="#555555")
+
+        # --- VISUALIZZAZIONE ---
+        net = Network(
+            height="700px", 
+            width="100%", 
+            bgcolor="#222222", 
+            font_color="white"
+        )
+        
+        net.from_nx(G)
+        
+        # Fisica ottimizzata per distanziare i nodi con etichette
+        net.barnes_hut(gravity=-4000, central_gravity=0.1, spring_length=200)
+        
+        try:
+            path = tempfile.gettempdir() + "/mtg_clean.html"
+            net.save_graph(path)
+            with open(path, 'r', encoding='utf-8') as f:
+                source_code = f.read()
+            st.components.v1.html(source_code, height=720)
+        except Exception as e:
+            st.error(f"Errore: {e}")
+            
+    else:
+        st.warning("Nessuna carta trovata con i filtri attuali.")
