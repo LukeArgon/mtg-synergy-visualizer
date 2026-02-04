@@ -16,7 +16,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚪ MTG Visualizer: Essential")
+st.title("⚪ MTG SINERGY")
 
 # --- LOGICA COLORI MTG ---
 def get_mtg_color(colors, type_line):
@@ -151,3 +151,4 @@ if analyze_btn and decklist_input:
             st.components.v1.html(source_code, height=720)
         except Exception as e:
             st.error(f"Errore: {e}")
+
