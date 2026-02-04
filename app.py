@@ -16,7 +16,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚪ MTG SINERGY")
+st.title("⚪ MTG Visualizer: Essential")
 
 # --- LOGICA COLORI MTG ---
 def get_mtg_color(colors, type_line):
@@ -36,7 +36,7 @@ def get_card_data_minimal(card_name):
         if response.status_code == 200:
             data = response.json()
             
-            # Recuperiamo il testo SOLO per il calcolo interno delle linee (NON lo mostriamo)
+            # Recuperiamo il testo SOLO per il calcolo interno delle linee
             if 'card_faces' in data:
                 oracle_text = f"{data['card_faces'][0].get('oracle_text', '')}\n{data['card_faces'][1].get('oracle_text', '')}"
                 type_line = f"{data['card_faces'][0].get('type_line', '')}"
@@ -46,19 +46,19 @@ def get_card_data_minimal(card_name):
 
             return {
                 'name': data.get('name'),
-                'type': type_line, # Serve per colorare il nodo
+                'type': type_line, 
                 'cmc': data.get('cmc', 0),
-                'colors': data.get('color_identity', []), # Usa l'identità per il comandante
-                'oracle_text': oracle_text.lower() # Serve solo al motore di calcolo
+                'colors': data.get('color_identity', []), 
+                'oracle_text': oracle_text.lower() 
             }
         return None
     except:
         return None
 
-# --- CALCOLO SINERGIA (Il cervello nascosto) ---
+# --- CALCOLO SINERGIA ---
 def calculate_synergy_weight(card_a, card_b):
     score = 0
-    # Anche se non mostriamo il testo, lo usiamo per disegnare le linee giuste
+    # Keywords
     tribal_keywords = ['goblin', 'elf', 'human', 'zombie', 'dragon', 'angel', 'artifact', 'enchantment']
     mech_keywords = ['destroy', 'exile', 'draw', 'counter', 'sacrifice', 'graveyard', 'token', 'flying']
 
@@ -102,18 +102,17 @@ if analyze_btn and decklist_input:
         G = nx.DiGraph()
         
         for index, row in df.iterrows():
-            # Dimensione Nodo (Visualizza Costo)
+            # Dimensione Nodo
             node_size = 15 + (row['cmc'] * 4)
             
-            # Tooltip MINIMALISTA (Richiesta Utente)
-            # Mostra solo: Nome, Colori, Costo
+            # Tooltip MINIMAL
             colors_display = "/".join(row['colors']) if row['colors'] else "C"
             tooltip = f"<b>{row['name']}</b><br>Colore: {colors_display}<br>Costo: {int(row['cmc'])}"
             
             G.add_node(row['name'], 
                        size=node_size, 
                        color=get_mtg_color(row['colors'], row['type']),
-                       title=tooltip, # Questo controlla cosa appare col mouse
+                       title=tooltip, 
                        label=row['name'],
                        font={'color': 'white'})
 
@@ -133,5 +132,22 @@ if analyze_btn and decklist_input:
                     edge_width = min(weight * 1.5, 6) 
                     G.add_edge(name_a, name_b, width=edge_width, color="#555555")
 
-        # Visualizzazione
-        net = Network(height="700px", width="100%",
+        # Visualizzazione (CORRETTA)
+        net = Network(
+            height="700px", 
+            width="100%", 
+            bgcolor="#222222", 
+            font_color="white"
+        )
+        
+        net.from_nx(G)
+        net.barnes_hut(gravity=-3000, central_gravity=0.3, spring_length=180)
+        
+        try:
+            path = tempfile.gettempdir() + "/mtg_minimal.html"
+            net.save_graph(path)
+            with open(path, 'r', encoding='utf-8') as f:
+                source_code = f.read()
+            st.components.v1.html(source_code, height=720)
+        except Exception as e:
+            st.error(f"Errore: {e}")
